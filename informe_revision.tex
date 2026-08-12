@@ -109,3 +109,319 @@ $ git ls-files | wc -l
 El sistema levanta correctamente mediante \texttt{docker compose up -d}
 conforme al \texttt{README.md} del repositorio auditado. No se detectaron
 desviaciones que impidieran la revisión.
+\section{Fase 3: Tabla consolidada de hallazgos}
+
+La siguiente tabla resume los nueve hallazgos verificados sobre el código de
+FUVV en el commit \texttt{49ec17d}. Cada hallazgo se convirtió en un
+\emph{issue} en el repositorio revisado con la plantilla obligatoria de la
+guía del taller.
+
+\begin{center}
+\small
+\begin{tabular}{c l p{6.8cm} l l}
+\toprule
+\textbf{ID} & \textbf{Ítem} & \textbf{Hallazgo} & \textbf{Sev.} & \textbf{Issue} \\
+\midrule
+H01 & B1/B4 & API Gateway con configuración duplicada e inconsistente (rutas en Java y en YAML a la vez). & Crítica & \#1 \\
+H02 & C5 & URLs \texttt{http://localhost:8081/8082/8083} incrustadas en el Gateway; inoperantes bajo Docker. & Crítica & \#2 \\
+H03 & B4 & \texttt{reservas-solicitudes-service} no está registrado en el Gateway. & Mayor & \#3 \\
+H04 & D3 & Reintentos sin \emph{backoff} exponencial ni límite temporal. & Mayor & \#4 \\
+H05 & D5 & Mensajes internos de excepción filtrados al cliente. & Mayor & \#5 \\
+H06 & D5 & \texttt{IllegalArgumentException} mapeada a HTTP 404. & Menor & \#6 \\
+H07 & E2/E3 & Ausencia de identificador de correlación entre servicios. & Mayor & \#7 \\
+H08 & D1/E5 & Captura silenciosa de excepciones en el bucle de reintentos. & Mayor & \#8 \\
+H09 & A1 & Violación de SRP y duplicación en \texttt{AuthService.login/refrescar}. & Menor & \#9 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent Distribución de severidad: 2 Críticas, 5 Mayores, 2 Menores. Cobertura
+de los cinco bloques del checklist: A, B, C, D y E.
+
+\section{Análisis por bloque}
+
+\subsection{Bloque A --- Principios SOLID}
+
+\textbf{SRP (Cumple Parcialmente).} En
+\texttt{auth-service/.../service/AuthService.java:43-109}, el método
+\texttt{login} concentra: autenticación local, llamada remota al servicio de
+usuarios, validación de perfil activo, generación de dos tokens JWT,
+transformación de \emph{authorities} en roles y permisos, y ensamblaje del
+DTO de respuesta. El método \texttt{refrescar} (líneas 111-165) duplica casi
+por completo el bloque final de construcción del \texttt{AuthUserResponse}.
+
+\textbf{ISP (Cumple).} Las interfaces de servicio están segregadas por dominio
+(por ejemplo \texttt{PerfilService}, \texttt{EstudianteService},
+\texttt{DocenteService}) y no se detectaron implementaciones vacías.
+
+\textbf{DIP (Cumple).} La inversión de dependencias se aplica de forma
+sistemática. Todos los componentes revisados reciben sus colaboradores por
+constructor: \texttt{AuthService} (líneas 31-41), \texttt{SolicitudReservaController}
+(líneas 44-46) y \texttt{AcademicoLaboratoriosClient} (líneas 22-27). La capa
+de dominio no importa el driver de base de datos ni el cliente HTTP concreto.
+
+\subsection{Bloque B --- Patrones de diseño}
+
+\textbf{Patrones implementados (Cumple).} Se identificaron tres patrones
+efectivamente aplicados:
+
+\begin{itemize}
+  \item \textbf{Repository} en el paquete \texttt{repository/} de cada
+        servicio, apoyado en Spring Data JPA.
+  \item \textbf{Specification} (variante del patrón \emph{Query Object}) en
+        \texttt{academico-laboratorios-service/.../specification/}, para
+        consultas dinámicas y componibles.
+  \item \textbf{DTO Mapper} en
+        \texttt{reservas-solicitudes-service/.../mapper/}
+        (\texttt{ReservaMapper}, \texttt{SolicitudReservaMapper}), que aísla
+        las entidades JPA de la interfaz pública.
+\end{itemize}
+
+\textbf{Patrones distribuidos (No Cumple).} Existe un módulo \texttt{api-gateway}
+que implementa el patrón \emph{API Gateway}, pero la implementación presenta
+tres defectos verificados:
+
+\begin{enumerate}
+  \item En \texttt{api-gateway/.../routes/GatewayRoutes.java:14-33} se declaran
+        rutas por código Java para \texttt{auth-service} y
+        \texttt{usuarios-service}.
+  \item En \texttt{api-gateway/src/main/resources/application.yml:8-25} se
+        declaran rutas por configuración YAML para \texttt{auth},
+        \texttt{usuarios} y \texttt{académico}, con \emph{predicados
+        distintos} a los del código Java.
+  \item El servicio \texttt{reservas-solicitudes-service:8084} no aparece en
+        ninguno de los dos ficheros, por lo que no es enrutable desde el
+        Gateway.
+\end{enumerate}
+
+\textbf{Circuit Breaker (No Cumple).} No se detectó implementación de disyuntor
+(Resilience4j o equivalente). Ante una caída sostenida de
+\texttt{académico-laboratorios}, la respuesta del sistema depende únicamente
+de tiempos de espera y reintentos ciegos.
+
+\subsection{Bloque C --- Separación de capas}
+
+\textbf{C1-C4 (Cumple).} La estructura de paquetes reproduce fielmente la
+separación por responsabilidades. Las entidades JPA no se exponen en los
+endpoints REST: existe una capa \texttt{dto/} bien delimitada. La lógica de
+negocio reside en las clases \texttt{*ServiceImpl} y no en los controladores,
+que se limitan a delegar.
+
+\textbf{C5 --- Configuración externalizada (No Cumple).} Aunque credenciales de
+base de datos y claves JWT sí se externalizan mediante variables de entorno
+en \texttt{docker-compose.yml}, en el Gateway las URLs de destino están
+\emph{incrustadas en el código fuente}
+(\texttt{GatewayRoutes.java:20,28} y \texttt{application.yml:13,18,23}) como
+\texttt{http://localhost:8081/8082/8083}. Dentro de la red Docker
+\texttt{scli-network}, los servicios se resuelven por nombre de contenedor
+(\texttt{auth-service:8081}); por tanto, esta configuración no es portable.
+
+\subsection{Bloque D --- Manejo de excepciones distribuidas}
+
+\textbf{D1 --- Captura silenciosa (No Cumple).} En
+\texttt{reservas-solicitudes-service/.../client/AcademicoLaboratoriosClient.java:60-72}
+el método \texttt{executeWithReadRetries} captura
+\texttt{ResourceAccessException} y \texttt{HttpServerErrorException} pero no
+registra las excepciones intermedias antes de reintentar. Un fallo transitorio
+no deja rastro.
+
+\textbf{D2 --- Timeouts explícitos (Cumple).}
+\texttt{RestClientConfig.java:38-53} configura \texttt{connectTimeout} y
+\texttt{readTimeout} en el \texttt{SimpleClientHttpRequestFactory} a partir de
+las propiedades \texttt{app.http.connect-timeout-ms} y
+\texttt{app.http.read-timeout-ms}.
+
+\textbf{D3 --- Reintentos acotados con espera creciente (No Cumple).} El bucle
+de reintentos en \texttt{AcademicoLaboratoriosClient.java:60-72} es un
+\texttt{while(true)} sin \texttt{Thread.sleep} ni \emph{backoff exponencial}.
+Aunque el número de intentos está limitado por \texttt{maxReadRetries}, los
+reintentos se disparan de forma inmediata, agravando la carga sobre el
+servicio remoto y sin darle tiempo a recuperarse.
+
+\textbf{D4 --- Respuesta de degradación (No Cumple).} No se observa valor de
+reserva ni respuesta de degradación cuando \texttt{académico-laboratorios}
+está indisponible. El fallo se propaga y se transforma en HTTP 503 al
+usuario.
+
+\textbf{D5 --- Errores uniformes al cliente (Cumple Parcialmente).}
+\texttt{GlobalExceptionHandler.java} unifica el formato de respuesta en un
+\texttt{ApiError} con \texttt{timestamp}, \texttt{status}, \texttt{error},
+\texttt{message} y \texttt{path}. Sin embargo:
+
+\begin{itemize}
+  \item El manejador genérico \texttt{manejarExcepcion(Exception)} (líneas
+        80-84) devuelve \texttt{exception.getMessage()} sin filtrar, y el
+        manejador de \texttt{DataIntegrityViolationException} (líneas 56-60)
+        hace lo mismo. Esto puede exponer nombres de tablas o restricciones
+        internas al cliente.
+  \item \texttt{IllegalArgumentException} se mapea a HTTP 404 (líneas 23-27),
+        cuando su semántica natural es 400 Bad Request.
+\end{itemize}
+
+\subsection{Bloque E --- Logging y trazabilidad}
+
+\textbf{E1 (Cumple parcialmente).} El proyecto utiliza SLF4J/Logback por
+defecto (Spring Boot). No se detectó uso indebido de \texttt{System.out} en
+las clases revisadas.
+
+\textbf{E2 --- Identificador de correlación (No Cumple).} En
+\texttt{RestClientConfig.java:38-53}, el único encabezado propagado en las
+llamadas entre servicios es \texttt{X-Internal-Api-Key}. No se propaga
+\texttt{X-Correlation-Id} ni \texttt{traceparent} (W3C Trace Context).
+Tampoco se detectó configuración de MDC (\emph{Mapped Diagnostic Context}).
+
+\textbf{E3 --- Registro estructurado (No Cumple).} La configuración por defecto
+produce registros en texto plano. No se detectó \texttt{logstash-logback-encoder}
+u otro \emph{appender} JSON que permita filtrar por servicio, operación o
+identificador de correlación.
+
+\textbf{E4 (Cumple).} No se observó registro de contraseñas ni tokens en las
+clases revisadas.
+
+\textbf{E5 --- Huella de eventos críticos (No Cumple).} Las creaciones y
+transiciones de estado de solicitudes y reservas no dejan registro auditable
+explícito en los servicios revisados.
+
+\section{Fase 4: Issues abiertos en el repositorio revisado}
+
+Se abrieron nueve \emph{issues} en el repositorio de FUVV
+(\url{https://github.com/iavillamarin98-pred/Proyecto_Fin_de_Curso_scli/issues}),
+uno por cada hallazgo, con etiquetas de bloque y severidad, responsable
+nominal del equipo autor y fecha de resolución anterior al cierre de la
+Semana 17.
+
+\begin{center}
+\small
+\begin{tabular}{c l l l}
+\toprule
+\textbf{Nº} & \textbf{Título} & \textbf{Etiquetas} & \textbf{Fecha} \\
+\midrule
+\#1 & Unificar configuración de rutas del API Gateway & patrones, critica & 2026-08-18 \\
+\#2 & Reemplazar URLs \texttt{localhost} por nombres Docker & capas, critica & 2026-08-18 \\
+\#3 & Registrar \texttt{reservas-solicitudes} en el Gateway & patrones, mayor & 2026-08-18 \\
+\#4 & Introducir \emph{backoff} exponencial en los reintentos & excepciones, mayor & 2026-08-18 \\
+\#5 & Sanear mensajes de error expuestos al cliente & excepciones, mayor & 2026-08-18 \\
+\#6 & Corregir mapeo de \texttt{IllegalArgumentException} a 400 & excepciones, menor & 2026-08-18 \\
+\#7 & Propagar identificador de correlación entre servicios & observabilidad, mayor & 2026-08-18 \\
+\#8 & Registrar excepciones en el bucle de reintentos & observabilidad, mayor & 2026-08-18 \\
+\#9 & Extraer construcción del \texttt{AuthUserResponse} & solid, menor & 2026-08-18 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Preguntas de análisis obligatorias}
+
+\textbf{1. ¿Qué violación de SOLID encarece más el cambio para la Entrega 4?}
+La violación de SRP en \texttt{AuthService} (H09). La duplicación de la
+construcción del \texttt{AuthUserResponse} en \texttt{login} y
+\texttt{refrescar} implica que cualquier ajuste al modelo de identidad
+(nuevos campos de perfil, nuevas políticas de expiración) exigirá editar
+dos métodos con riesgo alto de divergencia silenciosa.
+
+\textbf{2. ¿Qué patrón introduciría que hoy no está?} Un \emph{Circuit
+Breaker} sobre \texttt{AcademicoLaboratoriosClient} y \texttt{UsuariosClient}
+usando Resilience4j. Actualmente los reintentos son ciegos y sin freno; un
+disyuntor interrumpiría las llamadas ante indisponibilidad sostenida y
+permitiría degradar la funcionalidad de forma controlada. Aumentar el
+\emph{timeout} no basta porque no protege al servicio remoto de la avalancha
+de reintentos ni permite pasar a modo degradado.
+
+\textbf{3. Si \texttt{académico-laboratorios} deja de responder durante 30
+segundos, ¿qué ocurre?} Cada llamada de \texttt{reservas} espera
+\texttt{readTimeoutMs} y arroja \texttt{ResourceAccessException}. El bucle
+\texttt{while(true)} de \texttt{executeWithReadRetries} reintenta
+inmediatamente hasta \texttt{maxReadRetries} veces. El bloqueo total por
+hilo puede alcanzar
+$(\text{readTimeoutMs}) \times (\text{maxReadRetries}+1)$ milisegundos, tras
+lo cual \texttt{GlobalExceptionHandler} devuelve HTTP 503 al usuario con el
+\texttt{getMessage()} de la excepción. No hay degradación ni respuesta de
+reserva.
+
+\textbf{4. ¿Se puede reconstruir la traza de una operación entre dos
+servicios?} No. Ninguna cabecera de correlación se propaga y los \emph{logs}
+no incluyen un identificador común. Al crear una solicitud de reserva,
+\texttt{reservas-solicitudes-service} llama a
+\texttt{académico-laboratorios} para verificar materia y periodo lectivo;
+en los \emph{logs} de ambos servicios aparecen entradas independientes sin
+ningún campo que las relacione.
+
+\textbf{5. ¿Qué aprendemos para nuestro propio PFC (BCEL)?} Antes de la
+Entrega 4 adoptaremos: (i) un filtro de correlación en el borde del sistema
+que genere \texttt{X-Correlation-Id} y lo propague vía MDC y cabeceras
+salientes; (ii) configuración del \emph{gateway} en una única fuente
+declarativa; (iii) Resilience4j para disyuntor y \emph{backoff} exponencial;
+(iv) un \texttt{GlobalExceptionHandler} que nunca devuelva
+\texttt{getMessage()} de excepciones internas al cliente.
+
+\section{Conclusiones y recomendación priorizada}
+
+El sistema SCLI presenta una arquitectura de microservicios con separación
+de capas real y patrones estructurales bien aplicados (Repository,
+Specification, DTO Mapper). Las debilidades se concentran en los ejes
+propiamente distribuidos: el API Gateway está desconfigurado y no cubre a
+todos los servicios; el manejo de fallos parciales es prematuro (reintentos
+sin \emph{backoff}, sin disyuntor y sin degradación); y la observabilidad
+está esencialmente ausente por la falta de identificador de correlación
+propagado entre servicios.
+
+\textbf{Recomendación priorizada para el equipo autor:}
+
+\begin{enumerate}
+  \item Resolver los issues \textbf{Críticos} \#1 y \#2 antes que cualquier
+        otro trabajo: sin un Gateway correcto no hay integración demostrable.
+  \item Introducir el filtro de correlación (\#7); es la base para
+        diagnosticar los demás fallos.
+  \item Aplicar \emph{backoff} (\#4) y saneamiento de errores (\#5).
+  \item Cerrar los hallazgos Menores en la iteración siguiente.
+\end{enumerate}
+
+\section{Declaración de uso de inteligencia artificial generativa}
+
+El equipo revisor BCEL declara haber utilizado el asistente Claude (Anthropic)
+como apoyo para: (i) sistematizar la lectura del código fuente auditado
+según los cinco bloques del \emph{checklist}; (ii) redactar la estructura
+del presente informe y la plantilla de los \emph{issues}; y (iii) verificar
+el formato IEEE de las referencias. Todos los hallazgos fueron verificados
+manualmente contra el código en el commit \texttt{49ec17d}. La
+responsabilidad intelectual del contenido corresponde a los integrantes
+del equipo revisor.
+
+\begin{thebibliography}{9}
+
+\bibitem{bacchelli2013}
+A. Bacchelli and C. Bird, ``Expectations, Outcomes, and Challenges of Modern
+Code Review,'' in \emph{Proc. 35th Int. Conf. Softw. Eng. (ICSE)}, San
+Francisco, CA, USA, 2013, pp. 712--721, doi: 10.1109/ICSE.2013.6606617.
+
+\bibitem{sadowski2018}
+C. Sadowski, E. Söderberg, L. Church, M. Sipko, and A. Bacchelli, ``Modern
+Code Review: A Case Study at Google,'' in \emph{Proc. 40th Int. Conf. Softw.
+Eng. Softw. Eng. Pract. (ICSE-SEIP)}, Gothenburg, Sweden, 2018, pp.
+181--190, doi: 10.1145/3183519.3183525.
+
+\bibitem{martin2017}
+R. C. Martin, \emph{Clean Architecture: A Craftsman's Guide to Software
+Structure and Design}. Upper Saddle River, NJ, USA: Prentice Hall, 2017.
+
+\bibitem{richardson2018}
+C. Richardson, \emph{Microservices Patterns: With Examples in Java}. Shelter
+Island, NY, USA: Manning Publications, 2018.
+
+\bibitem{newman2021}
+S. Newman, \emph{Building Microservices: Designing Fine-Grained Systems},
+2nd ed. Sebastopol, CA, USA: O'Reilly Media, 2021.
+
+\bibitem{taibi2018}
+D. Taibi and V. Lenarduzzi, ``On the Definition of Microservice Bad Smells,''
+\emph{IEEE Software}, vol. 35, no. 3, pp. 56--62, 2018, doi:
+10.1109/MS.2018.2141031.
+
+\bibitem{iso25010}
+International Organization for Standardization, ``ISO/IEC 25010:2023
+Systems and Software Engineering --- Systems and Software Quality
+Requirements and Evaluation (SQuaRE) --- Product Quality Model,'' ISO,
+Geneva, Switzerland, 2023.
+
+\end{thebibliography}
+
+\end{document}
