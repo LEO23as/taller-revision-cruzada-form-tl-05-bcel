@@ -109,6 +109,73 @@ $ git ls-files | wc -l
 El sistema levanta correctamente mediante \texttt{docker compose up -d}
 conforme al \texttt{README.md} del repositorio auditado. No se detectaron
 desviaciones que impidieran la revisión.
+
+\section{Fase 2: Mapa de arquitectura reconstruido}
+
+El sistema auditado, denominado \textbf{SCLI} (\emph{Sistema de Control de
+Laboratorios e Infraestructura}) por sus autores del equipo FUVV, está
+implementado como un conjunto de microservicios Spring Boot en Java,
+coordinados mediante Docker Compose y con persistencia en instancias
+independientes de CockroachDB. El mapa siguiente se reconstruyó leyendo el
+código fuente y el archivo \texttt{docker-compose.yml}, no la documentación.
+
+\subsection{Componentes del sistema}
+
+\begin{center}
+\begin{tabular}{l c l l}
+\toprule
+\textbf{Componente} & \textbf{Puerto} & \textbf{Base de datos} & \textbf{Responsabilidad} \\
+\midrule
+scli-front & --- & --- & Interfaz de usuario \\
+api-gateway & 8080 & --- & Enrutamiento (Spring Cloud Gateway MVC) \\
+auth-service & 8081 & cockroach-auth & Autenticación y emisión de JWT \\
+usuarios-service & 8082 & cockroach-usuarios & Gestión de perfiles \\
+academico-laboratorios-service & 8083 & cockroach-academico & Datos académicos y laboratorios \\
+reservas-solicitudes-service & 8084 & crdb-e3 (3 nodos) & Reservas y solicitudes \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Flujo de dependencias entre servicios}
+
+\begin{itemize}
+  \item El frontend consume el API Gateway; el Gateway reenvía a los servicios
+        internos por HTTP.
+  \item \texttt{auth-service} depende de \texttt{usuarios-service} para
+        recuperar el perfil del usuario autenticado.
+  \item \texttt{reservas-solicitudes-service} depende de
+        \texttt{academico-laboratorios-service} (verificación de materia,
+        periodo lectivo y laboratorio) y de \texttt{usuarios-service}
+        (verificación de perfil del solicitante).
+  \item Cada microservicio posee su propia base de datos CockroachDB, lo que
+        respeta el patrón \emph{Database per Service}. El módulo de reservas
+        usa además un clúster CockroachDB de tres nodos como evidencia de
+        replicación distribuida.
+\end{itemize}
+
+\subsection{Estructura interna común}
+
+Todos los microservicios de dominio siguen la misma organización de paquetes
+Java, con separación explícita en capas:
+
+\begin{itemize}
+  \item \texttt{controller/} --- Endpoints REST (capa de presentación).
+  \item \texttt{service/} y \texttt{service/impl/} --- Lógica de aplicación.
+  \item \texttt{repository/} --- Acceso a datos (Spring Data JPA).
+  \item \texttt{entity/} --- Entidades JPA (modelo de dominio persistente).
+  \item \texttt{dto/} (\texttt{request/}, \texttt{response/}) --- Objetos de
+        transferencia hacia la interfaz pública.
+  \item \texttt{exception/} --- Excepciones de negocio y manejador global.
+  \item \texttt{specification/} --- Consultas dinámicas.
+  \item \texttt{mapper/} (solo reservas) --- Conversión entidad $\rightarrow$ DTO.
+  \item \texttt{client/} y \texttt{config/} (reservas y auth) --- Clientes REST
+        hacia otros servicios y configuración de \texttt{RestClient}.
+  \item \texttt{security/} --- Filtros y proveedores JWT.
+\end{itemize}
+
+Esta estructura evidencia una separación de capas real (no meramente por
+nombre de carpeta), lo que se profundiza en el análisis del Bloque C.
+
 \section{Fase 3: Tabla consolidada de hallazgos}
 
 La siguiente tabla resume los nueve hallazgos verificados sobre el código de
