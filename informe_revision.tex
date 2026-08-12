@@ -364,64 +364,8 @@ sin \emph{backoff}, sin disyuntor y sin degradación); y la observabilidad
 está esencialmente ausente por la falta de identificador de correlación
 propagado entre servicios.
 
-\textbf{Recomendación priorizada para el equipo autor:}
-
-\begin{enumerate}
-  \item Resolver los issues \textbf{Críticos} \#1 y \#2 antes que cualquier
-        otro trabajo: sin un Gateway correcto no hay integración demostrable.
-  \item Introducir el filtro de correlación (\#7); es la base para
-        diagnosticar los demás fallos.
-  \item Aplicar \emph{backoff} (\#4) y saneamiento de errores (\#5).
-  \item Cerrar los hallazgos Menores en la iteración siguiente.
-\end{enumerate}
-
-\section{Declaración de uso de inteligencia artificial generativa}
-
-El equipo revisor BCEL declara haber utilizado el asistente Claude (Anthropic)
-como apoyo para: (i) sistematizar la lectura del código fuente auditado
-según los cinco bloques del \emph{checklist}; (ii) redactar la estructura
-del presente informe y la plantilla de los \emph{issues}; y (iii) verificar
-el formato IEEE de las referencias. Todos los hallazgos fueron verificados
-manualmente contra el código en el commit \texttt{49ec17d}. La
-responsabilidad intelectual del contenido corresponde a los integrantes
-del equipo revisor.
-
-\begin{thebibliography}{9}
-
-\bibitem{bacchelli2013}
-A. Bacchelli and C. Bird, ``Expectations, Outcomes, and Challenges of Modern
-Code Review,'' in \emph{Proc. 35th Int. Conf. Softw. Eng. (ICSE)}, San
-Francisco, CA, USA, 2013, pp. 712--721, doi: 10.1109/ICSE.2013.6606617.
-
-\bibitem{sadowski2018}
-C. Sadowski, E. Söderberg, L. Church, M. Sipko, and A. Bacchelli, ``Modern
-Code Review: A Case Study at Google,'' in \emph{Proc. 40th Int. Conf. Softw.
-Eng. Softw. Eng. Pract. (ICSE-SEIP)}, Gothenburg, Sweden, 2018, pp.
-181--190, doi: 10.1145/3183519.3183525.
-
-\bibitem{martin2017}
-R. C. Martin, \emph{Clean Architecture: A Craftsman's Guide to Software
-Structure and Design}. Upper Saddle River, NJ, USA: Prentice Hall, 2017.
-
-\bibitem{richardson2018}
-C. Richardson, \emph{Microservices Patterns: With Examples in Java}. Shelter
-Island, NY, USA: Manning Publications, 2018.
-
-\bibitem{newman2021}
-S. Newman, \emph{Building Microservices: Designing Fine-Grained Systems},
-2nd ed. Sebastopol, CA, USA: O'Reilly Media, 2021.
-
-\bibitem{taibi2018}
-D. Taibi and V. Lenarduzzi, ``On the Definition of Microservice Bad Smells,''
-\emph{IEEE Software}, vol. 35, no. 3, pp. 56--62, 2018, doi:
-10.1109/MS.2018.2141031.
-
-\bibitem{iso25010}
-International Organization for Standardization, ``ISO/IEC 25010:2023
-Systems and Software Engineering --- Systems and Software Quality
-Requirements and Evaluation (SQuaRE) --- Product Quality Model,'' ISO,
-Geneva, Switzerland, 2023.
-
-\end{thebibliography}
-
+\nocite{*}
+\bibliographystyle{ieeetr}
+\bibliography{referencias}
+ 
 \end{document}
