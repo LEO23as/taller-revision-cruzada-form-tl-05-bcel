@@ -1,0 +1,111 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish,es-tabla]{babel}
+\usepackage[a4paper,margin=2.5cm]{geometry}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{titlesec}
+\usepackage{hyperref}
+\usepackage{graphicx}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  urlcolor=blue!50!black,
+  citecolor=blue!50!black
+}
+
+\titleformat{\section}{\normalfont\Large\bfseries}{\thesection.}{0.6em}{}
+\titleformat{\subsection}{\normalfont\large\bfseries}{\thesubsection}{0.6em}{}
+
+\begin{document}
+
+\begin{titlepage}
+\begin{center}
+
+\vspace*{1cm}
+
+{\large UNIVERSIDAD TÉCNICA ESTATAL DE QUEVEDO}\\[0.2cm]
+{\normalsize Facultad de Ciencias de la Computación}\\
+{\normalsize Carrera de Ingeniería de Software}\\
+{\normalsize Aplicaciones Distribuidas (ISR-701)}
+
+\vspace{2cm}
+
+\rule{\linewidth}{0.4pt}\\[0.4cm]
+{\huge \bfseries Informe de Revisión Técnica Cruzada}\\[0.3cm]
+{\large \bfseries del Código del Proyecto Fin de Curso}\\[0.4cm]
+\rule{\linewidth}{0.4pt}
+
+\vspace{0.8cm}
+{\normalsize Taller FORM-TL-05 — Unidad 5\\
+Principios SOLID, patrones de diseño, separación de capas,\\
+manejo de excepciones distribuidas y observabilidad}
+
+\vspace{2cm}
+
+\begin{tabular}{r l}
+\textbf{Equipo revisor:} & BCEL \\
+\textbf{Sistema revisado:} & SCLI — Sistema de Control de Laboratorios e Infraestructura \\
+\textbf{Equipo autor del PFC:} & FUVV \\
+\textbf{Fecha de auditoría:} & 11 de agosto de 2026 \\
+\end{tabular}
+
+\vfill
+
+\textbf{Integrantes del equipo revisor:}\\[0.3cm]
+\begin{tabular}{l l}
+\textbf{Castro López Pedro Leonardo} & Líder / Editor / Revisión Bloques C, D, E \\
+\textbf{Emanuel Pino Juliana Romina} & Revisión Bloques A y B (SOLID y Patrones) \\
+\end{tabular}
+
+\vspace{1cm}
+{\small Quevedo — Los Ríos — Ecuador}
+
+\end{center}
+\end{titlepage}
+\section{Objeto auditado}
+
+La revisión se realizó sobre un commit específico del repositorio del equipo FUVV,
+fijado antes de cualquier análisis para garantizar la reproducibilidad de los
+hallazgos.
+
+\begin{center}
+\begin{tabular}{l l}
+\toprule
+\textbf{Repositorio revisado} & \url{https://github.com/iavillamarin98-pred/Proyecto_Fin_de_Curso_scli} \\
+\textbf{Rama} & main \\
+\textbf{Commit auditado (SHA completo)} & \texttt{49ec17dfd42835fe5dfbd75249a5e8a51941ef4a} \\
+\textbf{SHA corto} & \texttt{49ec17d} \\
+\textbf{Fecha del commit} & 2026-07-29 23:40:45 (UTC-05) \\
+\textbf{Autor del commit} & Freddy Vladimir Farinango Guandinango \\
+\textbf{Archivos versionados} & 414 \\
+\textbf{Fecha y hora de la auditoría} & 2026-08-11 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Fase 1: Congelación del objeto revisado}
+
+Antes de iniciar cualquier análisis se ejecutaron los comandos exigidos por la
+guía del taller para dejar registrada la versión exacta del código sobre la que
+se produce toda la evidencia posterior. La salida obtenida fue la siguiente:
+
+\begin{verbatim}
+$ git log -1 --format="%H | %aI | %an"
+49ec17dfd42835fe5dfbd75249a5e8a51941ef4a | 2026-07-29T23:40:45-05:00 |
+Freddy Vladimir Farinango Guandinango
+
+$ git rev-parse --short HEAD
+49ec17d
+
+$ git ls-files | wc -l
+414
+\end{verbatim}
+
+El sistema levanta correctamente mediante \texttt{docker compose up -d}
+conforme al \texttt{README.md} del repositorio auditado. No se detectaron
+desviaciones que impidieran la revisión.
